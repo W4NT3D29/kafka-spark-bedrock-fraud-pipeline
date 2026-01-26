@@ -1,0 +1,35 @@
+# Scala/sbt
+target/
+.metals/
+.bloop/
+.scalafmt.conf  # Ignore if it's generated/auto; commit if you customized it
+metals.sbt  # If present
+project/metals.sbt
+project/project/
+project/target/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# Python
+producer/venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+
+# Docker/temp
+.dockerignore
+*.log
+tmp/
+/global-logging/  # If this is a temp folder
+
+# Mac/OS-specific
+.DS_Store
+
+# Other
+*.class
+*.jar  # But commit your assembly JAR if needed? No - regenerate on build
+*.tmp
