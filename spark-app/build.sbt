@@ -26,5 +26,6 @@ lazy val root = (project in file("."))
     assembly / assemblyMergeStrategy := {
       case PathList("META-INF", xs @ _*) => MergeStrategy.discard
       case x                             => MergeStrategy.first
-    }
+    },
+    assembly / assemblyOutputPath := baseDirectory.value / s"${name.value}-assembly-${version.value}.jar"
   )
