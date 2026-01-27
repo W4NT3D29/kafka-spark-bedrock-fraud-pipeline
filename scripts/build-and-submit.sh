@@ -39,6 +39,8 @@ docker exec -it spark-master \
     --master spark://spark-master:7077 \
     --class "$CLASS_NAME" \
     --deploy-mode client \
+    --conf spark.driver.extraJavaOptions="-Djava.security.manager=allow" \
+    --conf spark.executor.extraJavaOptions="-Djava.security.manager=allow" \
     /opt/spark/app/"$JAR_NAME"
 
 echo "Job submission complete. Check Spark UI at http://localhost:8082 for details."

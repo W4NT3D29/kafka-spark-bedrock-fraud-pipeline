@@ -11,11 +11,12 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-core" % "3.5.3" % Provided,
       "org.apache.spark" %% "spark-sql" % "3.5.3" % Provided,
       "org.apache.spark" %% "spark-streaming" % "3.5.3" % Provided,
-      "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.3" % Provided,
-      "org.apache.spark" %% "spark-avro" % "3.5.3" % Provided,
-      "com.twitter" %% "bijection-avro" % "0.9.7" % Provided,
-      "io.confluent" % "kafka-avro-serializer" % "7.7.0" % Provided,
-      "io.confluent" % "kafka-schema-registry-client" % "7.7.0" % Provided,
+      // Include Kafka and Avro in assembly JAR (not Provided)
+      "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.3",
+      "org.apache.spark" %% "spark-avro" % "3.5.3",
+      "com.twitter" %% "bijection-avro" % "0.9.7",
+      "io.confluent" % "kafka-avro-serializer" % "7.7.0",
+      "io.confluent" % "kafka-schema-registry-client" % "7.7.0",
       "org.slf4j" % "slf4j-api" % "2.0.16",
       "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1" % Runtime
     ),
@@ -23,10 +24,14 @@ lazy val root = (project in file("."))
     // Confluent repo for schema registry deps
     resolvers += "Confluent" at "https://packages.confluent.io/maven/",
 
-    // Assembly settings (to create fat JAR later if needed, but for dev we submit directly)
+    // Assembly settings (to create fat JAR with all dependencies)
     assembly / assemblyMergeStrategy := {
+      case PathList("META-INF", "services", xs @ _*) => MergeStrategy.concat
       case PathList("META-INF", xs @ _*) => MergeStrategy.discard
-      case x                             => MergeStrategy.first
+      case "module-info.class" => MergeStrategy.discard
+      case x if x.endsWith(".proto") => MergeStrategy.first
+      case x if x.contains("commons-logging") => MergeStrategy.first
+      case x => MergeStrategy.first
     },
     assembly / assemblyOutputPath := baseDirectory.value / s"${name.value}-assembly-${version.value}.jar"
   )

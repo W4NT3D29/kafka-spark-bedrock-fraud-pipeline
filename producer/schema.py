@@ -9,7 +9,7 @@ TRANSACTION_SCHEMA_STR = """
         {"name": "amount", "type": "double"},
         {"name": "currency", "type": "string"},
         {"name": "merchant", "type": "string"},
-        {"name": "category", "type": ["string", "null"], "default": null},
+        {"name": "category", "type": ["null", "string"], "default": null},
         {"name": "timestamp", "type": "long", "logicalType": "timestamp-millis"},
         {"name": "country", "type": "string"},
         {"name": "device_type", "type": "string"},

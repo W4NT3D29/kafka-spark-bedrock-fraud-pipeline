@@ -1,0 +1,5 @@
+# Kafka producer dependencies
+confluent-kafka[avro]>=2.3.0
+faker>=20.0.0
+requests>=2.31.0
+httpx>=0.25.0

@@ -7,4 +7,6 @@
 [0m[[0m[0mdebug[0m] [0m[0mRegistering generated classes:[0m
 [0m[[0m[0mdebug[0m] [0m[0m	FraudPipelineApp$.class[0m
 [0m[[0m[0mdebug[0m] [0m[0m	FraudPipelineApp.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	FraudPipelineApp$$typecreator2$1.class[0m
+[0m[[0m[0mdebug[0m] [0m[0m	FraudPipelineApp$$typecreator1$1.class[0m
 [0m[[0m[0mdebug[0m] [0m[0mRemoving the temporary directory used for backing up class files: /Users/omarfg/git/kafka-spark-bedrock-fraud-pipeline/spark-app/target/scala-2.12/classes.bak[0m

@@ -6,104 +6,209 @@ import org.apache.spark.sql.streaming.Trigger
 import org.apache.spark.sql.types.{LongType, StringType, StructType}
 import io.confluent.kafka.schemaregistry.client.CachedSchemaRegistryClient
 import org.apache.avro.Schema
-import org.apache.spark.sql.avro.functions._ // Add this for from_avro
+import org.apache.spark.sql.avro.functions._
 
 object FraudPipelineApp {
+  
+  // UDF to strip Confluent Schema Registry header (5 bytes: magic byte + 4-byte schema ID)
+  val stripSchemaRegistryHeader = udf((payload: Array[Byte]) => {
+    if (payload != null && payload.length > 5) {
+      payload.drop(5) // Skip first 5 bytes
+    } else {
+      payload
+    }
+  })
+  
   def main(args: Array[String]): Unit = {
     val spark = SparkSession
       .builder()
       .appName("Kafka Spark Fraud Detection")
-      .master("spark://spark-master:7077") // For cluster submit
+      .master("spark://spark-master:7077")
+      .config(
+        "spark.streaming.stopGracefullyOnShutdown",
+        "true"
+      ) // Graceful stop
       .getOrCreate()
 
     import spark.implicits._
 
-    // Schema Registry config
+    spark.sparkContext.setLogLevel("INFO") // More verbose for debug
+
     val schemaRegistryUrl = "http://schema-registry:8081"
     val subject = "transactions-raw-value"
     val registry = new CachedSchemaRegistryClient(schemaRegistryUrl, 100)
     val avroSchemaStr = registry.getLatestSchemaMetadata(subject).getSchema
     val avroSchema = new Schema.Parser().parse(avroSchemaStr)
 
-    // Define Spark schema from Avro (manual mapping for simplicity)
     val transactionSchema = new StructType()
-      .add("transaction_id", StringType)
-      .add("user_id", StringType)
-      .add("amount", "double")
-      .add("currency", StringType)
-      .add("merchant", StringType)
-      .add("category", StringType, true)
-      .add("timestamp", LongType)
-      .add("country", StringType)
-      .add("device_type", StringType)
-      .add("is_fraud", "boolean")
+      .add("transaction_id", StringType, false)
+      .add("user_id", StringType, false)
+      .add("amount", "double", false)
+      .add("currency", StringType, false)
+      .add("merchant", StringType, false)
+      .add("category", StringType, true) // Nullable
+      .add("timestamp", LongType, false)
+      .add("country", StringType, false)
+      .add("device_type", StringType, false)
+      .add("is_fraud", "boolean", false)
 
-    // Read stream from Kafka
     val rawDf = spark.readStream
       .format("kafka")
-      .option("kafka.bootstrap.servers", "kafka-1:29092,kafka-2:29092")
+      .option("kafka.bootstrap.servers", "kafka-1:29092")
       .option("subscribe", "transactions-raw")
-      .option("startingOffsets", "earliest")
+      .option("startingOffsets", "earliest") // Read all data for testing
       .option("failOnDataLoss", "false")
       .load()
 
-    // Parse Avro value
+    // Strip Schema Registry header (5 bytes) and then deserialize Avro
     val parsedDf = rawDf
+      .withColumn("avro_payload", stripSchemaRegistryHeader($"value"))
       .select(
-        from_avro($"value", avroSchemaStr).as("transaction")
+        from_avro($"avro_payload", avroSchemaStr).as("transaction")
       )
       .select("transaction.*")
 
-    // Convert timestamp millis to TimestampType
     val timedDf = parsedDf.withColumn(
       "timestamp",
       to_timestamp(from_unixtime($"timestamp" / 1000))
     )
 
-    // Add watermark + windowed features
+    // ============================================================
+    // APPROACH 1: IMMEDIATE RULE-BASED FRAUD DETECTION
+    // Simple threshold rules - good for showcase/demos
+    // ============================================================
+    println("=== Setting up immediate fraud detection ===")
+    val immediateFlags = timedDf.withColumn(
+      "fraud_reason",
+      when($"amount" > 5000, "HIGH_AMOUNT")
+        .when($"is_fraud" === true, "LABELED_FRAUD")
+        .otherwise("NORMAL")
+    ).withColumn(
+      "rule_score",
+      when($"amount" > 5000, lit(0.9))
+        .when($"is_fraud" === true, lit(0.8))
+        .otherwise(lit(0.1))
+    )
+
+    val flaggedImmediate = immediateFlags
+      .filter($"rule_score" > 0.5)
+      .select(
+        $"transaction_id",
+        $"user_id",
+        $"amount",
+        $"currency",
+        $"merchant",
+        $"timestamp",
+        $"fraud_reason",
+        $"rule_score",
+        $"is_fraud"
+      )
+
+    // ============================================================
+    // APPROACH 2: WINDOWED VELOCITY-BASED FRAUD DETECTION
+    // Realistic pattern detection - production-grade approach
+    // Detects: rapid transactions, high velocity, unusual patterns
+    // ============================================================
+    println("=== Setting up windowed velocity-based fraud detection ===")
     val featuredDf = timedDf
-      .withWatermark("timestamp", "10 minutes")
+      .withWatermark("timestamp", "2 minutes")  // Allow 2 min late data
       .groupBy(
-        window($"timestamp", "5 minutes", "1 minute"),
+        window($"timestamp", "2 minutes", "30 seconds"),  // 2-min window, 30-sec slide
         $"user_id"
       )
       .agg(
         sum($"amount").as("window_amount"),
         count("*").as("window_count"),
-        avg($"amount").as("avg_amount")
+        avg($"amount").as("avg_amount"),
+        max($"amount").as("max_amount")
       )
-      .withColumn(
-        "velocity",
-        $"window_amount" / 5
-      ) // Approx amount per min (5-min window)
+      .withColumn("velocity", $"window_amount" / 2)  // Amount per minute
 
-    // Simple rule-based fraud detection
-    val flaggedDf = featuredDf
-      .withColumn(
-        "fraud_score",
-        when(
-          $"velocity" > 1000 || $"window_count" > 50 || $"avg_amount" > 2000,
-          lit(0.8) // High risk
-        ).otherwise(lit(0.1))
-      ) // Low risk
-      .filter($"fraud_score" > 0.5) // Flag high risk
+    // Realistic fraud scoring based on velocity and patterns
+    val windowedFlags = featuredDf.withColumn(
+      "fraud_reason",
+      when($"velocity" > 2500, "HIGH_VELOCITY")
+        .when($"window_count" > 3, "RAPID_TRANSACTIONS")
+        .when($"avg_amount" > 3000, "HIGH_AVERAGE")
+        .otherwise("PATTERN_DETECTED")
+    ).withColumn(
+      "rule_score",
+      when($"velocity" > 5000, lit(0.95))  // Very high velocity
+        .when($"velocity" > 2500 || $"window_count" > 5, lit(0.85))  // High risk
+        .when($"velocity" > 1000 || $"window_count" > 3 || $"avg_amount" > 3000, lit(0.70))  // Medium risk
+        .otherwise(lit(0.1))
+    ).filter($"rule_score" > 0.5)
+      .select(
+        $"window",
+        $"user_id",
+        $"window_amount",
+        $"window_count",
+        $"avg_amount",
+        $"max_amount",
+        $"velocity",
+        $"fraud_reason",
+        $"rule_score"
+      )
 
-    // Sink to console (for testing) + new Kafka topic
-    val query = flaggedDf.writeStream
+    // Debug: Print windowed aggregations (all windows, not just flagged)
+    println("=== Starting windowed aggregations debug stream ===")
+    featuredDf.writeStream
       .outputMode("append")
       .format("console")
       .option("truncate", "false")
+      .option("numRows", "10")
       .trigger(Trigger.ProcessingTime("10 seconds"))
+      .queryName("windowed-aggregations-debug")
       .start()
 
-    // Also sink to Kafka (flagged-transactions)
-    flaggedDf.writeStream
+    // IMMEDIATE Flagged transactions console sink
+    println("=== Starting IMMEDIATE flagged transactions console stream ===")
+    val consoleQuery = flaggedImmediate.writeStream
+      .outputMode("append")
+      .format("console")
+      .option("truncate", "false")
+      .trigger(Trigger.ProcessingTime("5 seconds"))
+      .queryName("flagged-immediate-console")
+      .start()
+
+    // IMMEDIATE Kafka sink: Write flagged transactions to Kafka topic
+    println("=== Starting IMMEDIATE flagged transactions Kafka stream ===")
+    
+    // Convert DataFrame to JSON for Kafka
+    val kafkaFlaggedDf = flaggedImmediate
+      .select(
+        $"user_id".cast("string").as("key"),
+        to_json(struct($"*")).cast("string").as("value")
+      )
+    
+    kafkaFlaggedDf.writeStream
       .format("kafka")
-      .option("kafka.bootstrap.servers", "kafka-1:29092,kafka-2:29092")
+      .option("kafka.bootstrap.servers", "kafka-1:29092")
       .option("topic", "flagged-transactions")
-      .option("checkpointLocation", "/tmp/spark-checkpoint")
+      .option("checkpointLocation", "/tmp/spark-checkpoint-flagged-immediate")
+      .trigger(Trigger.ProcessingTime("5 seconds"))
+      .queryName("flagged-immediate-kafka")
       .start()
 
-    query.awaitTermination()
+    // WINDOWED Flagged to separate topic (for advanced use case)
+    println("=== Starting WINDOWED flagged transactions Kafka stream ===")
+    val kafkaWindowedDf = windowedFlags
+      .select(
+        $"user_id".cast("string").as("key"),
+        to_json(struct($"*")).cast("string").as("value")
+      )
+    
+    kafkaWindowedDf.writeStream
+      .format("kafka")
+      .option("kafka.bootstrap.servers", "kafka-1:29092")
+      .option("topic", "flagged-transactions")
+      .option("checkpointLocation", "/tmp/spark-checkpoint-flagged-windowed")
+      .trigger(Trigger.ProcessingTime("5 seconds"))
+      .queryName("flagged-windowed-kafka")
+      .start()
+
+    println("=== All streams started. Waiting for data... ===")
+    println("=== Watch for HIGH_AMOUNT transactions (>$5000) in console ===")
+    consoleQuery.awaitTermination() // Keeps job running until manual stop
   }
 }

@@ -4,37 +4,52 @@ import random
 import threading
 from datetime import datetime
 from confluent_kafka import SerializingProducer
+from confluent_kafka.schema_registry import SchemaRegistryClient
+from confluent_kafka.schema_registry.avro import AvroSerializer
+from confluent_kafka.serialization import StringSerializer
 from faker import Faker
-import fastavro
-from io import BytesIO
+import json
 from schema import TRANSACTION_SCHEMA_STR
 
 fake = Faker()
 
-BOOTSTRAP_SERVERS = "localhost:9092"  # Host view (kafka-1:29092 inside container)
+BOOTSTRAP_SERVERS = "localhost:9092"
 TOPIC = "transactions-raw"
 SCHEMA_REGISTRY_URL = "http://localhost:8081"
 
+USER_POOL = [f"user-{i:04d}" for i in range(1, 501)]
 
-def avro_serializer(value, schema_str):
-    schema = fastavro.parse_schema(schema_str)
-    bytes_writer = BytesIO()
-    fastavro.schemaless_writer(bytes_writer, schema, value)
-    return bytes_writer.getvalue()
+schema_registry_conf = {"url": SCHEMA_REGISTRY_URL}
+schema_registry_client = SchemaRegistryClient(schema_registry_conf)
+
+avro_schema_dict = json.loads(TRANSACTION_SCHEMA_STR)
+avro_serializer = AvroSerializer(schema_registry_client, json.dumps(avro_schema_dict))
+string_serializer = StringSerializer("utf-8")
 
 
 def generate_transaction():
-    is_fraud = random.random() < 0.08  # ~8% fraud rate
+    user_id = random.choice(USER_POOL)
+
+    # 20% chance of fraudulent pattern
+    is_fraud = random.random() < 0.2
+
+    if is_fraud:
+        # Fraudulent transactions: higher amounts, rapid succession
+        amount = round(random.uniform(5000.0, 15000.0), 2)
+    else:
+        # Normal transactions: lower amounts
+        amount = round(random.uniform(10.0, 500.0), 2)
+
     return {
         "transaction_id": str(uuid.uuid4()),
-        "user_id": fake.uuid4(),
-        "amount": round(random.uniform(1.0, 5000.0), 2),
+        "user_id": user_id,
+        "amount": amount,
         "currency": random.choice(["USD", "EUR", "MXN", "GBP"]),
         "merchant": fake.company(),
         "category": random.choice(
             ["electronics", "groceries", "travel", "entertainment", None]
         ),
-        "timestamp": int(datetime.now().timestamp() * 1000),  # millis
+        "timestamp": int(datetime.now().timestamp() * 1000),
         "country": fake.country_code(),
         "device_type": random.choice(["mobile", "desktop", "tablet"]),
         "is_fraud": is_fraud,
@@ -51,30 +66,34 @@ def delivery_report(err, msg):
 def producer_thread(thread_id, num_messages):
     conf = {
         "bootstrap.servers": BOOTSTRAP_SERVERS,
-        "key.serializer": lambda v: v.encode("utf-8"),  # Simple string key (user_id)
-        "value.serializer": lambda v: avro_serializer(v, TRANSACTION_SCHEMA_STR),
+        "key.serializer": string_serializer,
+        "value.serializer": avro_serializer,
         "acks": "all",  # Wait for all replicas
         "enable.idempotence": True,
         "retries": 5,
-        "compression.type": "snappy",  # For efficiency
+        "compression.type": "snappy",
     }
     producer = SerializingProducer(conf)
 
-    for _ in range(num_messages):
+    for i in range(num_messages):
         transaction = generate_transaction()
         key = transaction["user_id"]  # Partition by user_id
         producer.produce(
             topic=TOPIC, key=key, value=transaction, on_delivery=delivery_report
         )
         producer.poll(0)  # Non-blocking
-        time.sleep(0.001)  # Throttle for ~1k msgs/sec per thread; adjust for rate
+
+        # Small delay to spread transactions over time (for windowing)
+        # Every 10 messages, add a tiny delay
+        if i % 10 == 0:
+            time.sleep(0.01)
 
     producer.flush()
 
 
 if __name__ == "__main__":
     num_threads = 4  # Scale for higher throughput (e.g., 10k+ msgs/sec total)
-    messages_per_thread = 250  # Total: 1000 msgs; increase for benchmarks
+    messages_per_thread = 1000
 
     threads = []
     start_time = time.time()
