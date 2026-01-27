@@ -12,9 +12,10 @@ lazy val root = (project in file("."))
       "org.apache.spark" %% "spark-sql" % "3.5.3" % Provided,
       "org.apache.spark" %% "spark-streaming" % "3.5.3" % Provided,
       "org.apache.spark" %% "spark-sql-kafka-0-10" % "3.5.3" % Provided,
-      // For Avro support with Confluent Schema Registry
+      "org.apache.spark" %% "spark-avro" % "3.5.3" % Provided,
+      "com.twitter" %% "bijection-avro" % "0.9.7" % Provided,
       "io.confluent" % "kafka-avro-serializer" % "7.7.0" % Provided,
-      // Logging
+      "io.confluent" % "kafka-schema-registry-client" % "7.7.0" % Provided,
       "org.slf4j" % "slf4j-api" % "2.0.16",
       "org.apache.logging.log4j" % "log4j-slf4j2-impl" % "2.23.1" % Runtime
     ),
