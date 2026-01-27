@@ -1,35 +1,255 @@
-# Scala/sbt
+# ============================================
+# Scala / SBT
+# ============================================
 target/
+project/target/
+project/project/
+project/metals.sbt
 .metals/
 .bloop/
-.scalafmt.conf  # Ignore if it's generated/auto; commit if you customized it
-metals.sbt  # If present
-project/metals.sbt
-project/project/
-project/target/
+.bsp/
+metals.sbt
 
-# IDE
-.idea/
-.vscode/
-*.iml
+# SBT assembly
+*.jar
+!sbt-launch.jar
 
+# Scala IDE
+.scala_dependencies
+.worksheet
+.cache
+.classpath
+.project
+.settings/
+
+# ============================================
 # Python
+# ============================================
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
 producer/venv/
+producer/.venv/
+
+# Python cache
 __pycache__/
-*.pyc
-*.pyo
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
 *.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Docker/temp
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+.pytest_cache/
+.coverage
+.tox/
+.nox/
+htmlcov/
+.cache
+
+# ============================================
+# IDEs and Editors
+# ============================================
+# IntelliJ IDEA
+.idea/
+*.iml
+*.iws
+*.ipr
+out/
+
+# VS Code
+.vscode/
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+
+# Vim
+*.swp
+*.swo
+*~
+.vim/
+
+# Emacs
+*~
+\#*\#
+/.emacs.desktop
+/.emacs.desktop.lock
+*.elc
+auto-save-list
+tramp
+.\#*
+
+# Sublime Text
+*.sublime-project
+*.sublime-workspace
+
+# ============================================
+# Docker / Container
+# ============================================
 .dockerignore
+docker-compose.override.yml
+
+# ============================================
+# Kafka / Spark / Data
+# ============================================
+# Kafka data
+/data/
+/kafka-logs/
+/zookeeper-data/
+
+# Spark checkpoints
+/tmp/spark-checkpoint*/
+spark-warehouse/
+metastore_db/
+derby.log
+
+# Logs
 *.log
-tmp/
-/global-logging/  # If this is a temp folder
+logs/
+/global-logging/
 
-# Mac/OS-specific
-.DS_Store
-
-# Other
-*.class
-*.jar  # But commit your assembly JAR if needed? No - regenerate on build
+# Temporary data
 *.tmp
+*.temp
+/tmp/
+
+# ============================================
+# macOS
+# ============================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+.DocumentRevisions-V100
+.fseventsd
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+.apdisk
+
+# ============================================
+# Linux
+# ============================================
+*~
+.fuse_hidden*
+.directory
+.Trash-*
+.nfs*
+
+# ============================================
+# Windows
+# ============================================
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+*.stackdump
+[Dd]esktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+*.lnk
+
+# ============================================
+# Environment variables
+# ============================================
+.env
+.env.local
+.env.*.local
+.envrc
+
+# ============================================
+# Security / Credentials
+# ============================================
+*.pem
+*.key
+*.cert
+*.crt
+secrets.yml
+secrets.yaml
+credentials.json
+.aws/credentials
+
+# ============================================
+# Documentation build
+# ============================================
+site/
+_site/
+.jekyll-cache/
+.jekyll-metadata
+
+# ============================================
+# Testing
+# ============================================
+.nyc_output
+coverage/
+*.lcov
+
+# ============================================
+# Misc
+# ============================================
+*.bak
+*.orig
+*.rej
+*.save
+*.backup
+
+# Node (if you add any JS tooling later)
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Generated documentation
+/docs/api/
+
+# Benchmark results
+benchmark-results/
+*.benchmark
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Archives
+*.zip
+*.tar.gz
+*.rar
+*.7z
